@@ -120,6 +120,13 @@ class LoggingConfig(PrintableConfig):
     """whether to enable profiling code; prints speed of functions at the end of a program.
     profiler logs run times of functions and prints at end of training"""
 
+@dataclass
+# wandb related configs
+class WandbConfig(PrintableConfig):
+    """Configuration for wandb visualizer instantiation"""
+
+    run_id: Optional[str] = None
+    """wandb run id"""
 
 # Viewer related configs
 @dataclass

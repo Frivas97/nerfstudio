@@ -30,6 +30,7 @@ from nerfstudio.configs.base_config import (
     LoggingConfig,
     MachineConfig,
     ViewerConfig,
+    WandbConfig,
 )
 from nerfstudio.configs.config_utils import to_immutable_dict
 from nerfstudio.engine.optimizers import OptimizerConfig
@@ -60,6 +61,8 @@ class ExperimentConfig(InstantiateConfig):
     """Viewer configuration"""
     pipeline: VanillaPipelineConfig = VanillaPipelineConfig()
     """Pipeline configuration"""
+    wandb: WandbConfig = WandbConfig()
+    """Wandb configuration"""
     optimizers: Dict[str, Any] = to_immutable_dict(
         {
             "fields": {

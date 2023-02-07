@@ -24,7 +24,7 @@ import tyro
 from nerfacc import ContractionType
 
 from nerfstudio.cameras.camera_optimizers import CameraOptimizerConfig
-from nerfstudio.configs.base_config import ViewerConfig
+from nerfstudio.configs.base_config import ViewerConfig, WandbConfig
 from nerfstudio.data.datamanagers.base_datamanager import VanillaDataManagerConfig
 from nerfstudio.data.datamanagers.depth_datamanager import DepthDataManagerConfig
 from nerfstudio.data.datamanagers.semantic_datamanager import SemanticDataManagerConfig
@@ -97,6 +97,7 @@ method_configs["nerfacto"] = TrainerConfig(
         },
     },
     viewer=ViewerConfig(num_rays_per_chunk=1 << 15),
+    wandb=WandbConfig(run_id=None),
     vis="viewer",
 )
 
