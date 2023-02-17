@@ -161,6 +161,7 @@ method_configs["volinga"] = TrainerConfig(
         },
     },
     viewer=ViewerConfig(num_rays_per_chunk=1 << 15),
+    wandb=WandbConfig(run_id=None),
     vis="viewer",
 )
 
