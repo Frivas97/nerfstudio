@@ -26,7 +26,6 @@ from typing_extensions import Literal
 
 from nerfstudio.configs.base_config import InstantiateConfig
 
-
 @dataclass
 class SchedulerConfig(InstantiateConfig):
     """Basic scheduler config"""

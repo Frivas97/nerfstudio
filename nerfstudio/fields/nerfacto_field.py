@@ -116,11 +116,7 @@ class TCNNNerfactoField(Field):
     ) -> None:
         super().__init__()
 
-<<<<<<< HEAD
-        self.register_buffer('aabb', aabb)
-=======
         self.register_buffer("aabb", aabb)
->>>>>>> 630babacd6aea32999f40c181b7e8857d9a483b4
         self.geo_feat_dim = geo_feat_dim
         
         self.register_buffer('max_res', torch.tensor(max_res))
