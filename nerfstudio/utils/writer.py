@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ Generic Writer class
 from __future__ import annotations
 
 import enum
+import os
 from abc import abstractmethod
 from pathlib import Path
 from time import time
@@ -25,15 +26,14 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 import wandb
-from rich.console import Console
 from torch.utils.tensorboard import SummaryWriter
 from torchtyping import TensorType
 
 from nerfstudio.configs import base_config as cfg
 from nerfstudio.utils.decorators import check_main_thread, decorate_all
 from nerfstudio.utils.printing import human_format
+from nerfstudio.utils.rich_utils import CONSOLE
 
-CONSOLE = Console(width=120)
 to8b = lambda x: (255 * torch.clamp(x, min=0, max=1)).to(torch.uint8)
 EVENT_WRITERS = []
 EVENT_STORAGE = []
@@ -46,7 +46,6 @@ class EventName(enum.Enum):
 
     ITER_TRAIN_TIME = "Train Iter (time)"
     TOTAL_TRAIN_TIME = "Train Total (time)"
-    ITER_VIS_TIME = "Viewer Rendering (time)"
     ETA = "ETA (time)"
     TRAIN_RAYS_PER_SEC = "Train Rays / Sec"
     TEST_RAYS_PER_SEC = "Test Rays / Sec"
@@ -187,6 +186,13 @@ def setup_local_writer(config: cfg.LoggingConfig, max_iter: int, banner_messages
     GLOBAL_BUFFER["events"] = {}
 
 
+def is_initialized():
+    """
+    Returns True after setup_local_writer was called
+    """
+    return "events" in GLOBAL_BUFFER
+
+
 @check_main_thread
 def setup_event_writer(is_wandb_enabled: bool, is_tensorboard_enabled: bool, log_dir: Path, wandb_config: Optional[cfg.WandbConfig] = None) -> None:
     """Initialization of all event writers specified in config
@@ -268,7 +274,7 @@ class TimeWriter:
     def __exit__(self, *args):
         self.duration = time() - self.start
         update_step = self.step is not None
-        if self.write:
+        if self.write and is_initialized():
             self.writer.put_time(
                 name=self.name,
                 duration=self.duration,

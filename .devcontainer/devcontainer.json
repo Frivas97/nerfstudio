@@ -9,5 +9,9 @@
         "ms-azuretools.vscode-docker",
         "nvidia.nsight-vscode-edition",
         "ms-python.python"
+    ],
+    "runArgs": [
+        "--gpus",
+        "all"
     ]
 }

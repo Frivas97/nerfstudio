@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -126,3 +126,12 @@ class Field(nn.Module):
                 normals = self.get_normals()
             field_outputs[FieldHeadNames.NORMALS] = normals  # type: ignore
         return field_outputs
+
+
+def shift_directions_for_tcnn(directions: TensorType["bs":..., 3]) -> TensorType["bs":..., 3]:
+    """Shift directions from [-1, 1] to [0, 1]
+
+    Args:
+        directions: batch of directions
+    """
+    return (directions + 1.0) / 2.0

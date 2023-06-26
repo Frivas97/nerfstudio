@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,22 +46,13 @@ from nerfstudio.field_components.spatial_distortions import (
     SceneContraction,
     SpatialDistortion,
 )
-from nerfstudio.fields.base_field import Field
+from nerfstudio.fields.base_field import Field, shift_directions_for_tcnn
 
 try:
     import tinycudann as tcnn
 except ImportError:
     # tinycudann module doesn't exist
     pass
-
-
-def get_normalized_directions(directions: TensorType["bs":..., 3]) -> TensorType["bs":..., 3]:
-    """SH encoding must be in the range [0, 1]
-
-    Args:
-        directions: batch of directions
-    """
-    return (directions + 1.0) / 2.0
 
 
 class TCNNNerfactoField(Field):
@@ -112,16 +103,12 @@ class TCNNNerfactoField(Field):
         pass_semantic_gradients: bool = False,
         use_pred_normals: bool = False,
         use_average_appearance_embedding: bool = False,
-        spatial_distortion: SpatialDistortion = None,
+        spatial_distortion: Optional[SpatialDistortion] = None,
     ) -> None:
         super().__init__()
 
         self.register_buffer("aabb", aabb)
         self.geo_feat_dim = geo_feat_dim
-        
-        self.register_buffer('max_res', torch.tensor(max_res))
-        self.register_buffer('num_levels', torch.tensor(num_levels))
-        self.register_buffer('log2_hashmap_size', torch.tensor(log2_hashmap_size))
 
         self.register_buffer("max_res", torch.tensor(max_res))
         self.register_buffer("num_levels", torch.tensor(num_levels))
@@ -271,7 +258,7 @@ class TCNNNerfactoField(Field):
         if ray_samples.camera_indices is None:
             raise AttributeError("Camera indices are not provided.")
         camera_indices = ray_samples.camera_indices.squeeze()
-        directions = get_normalized_directions(ray_samples.frustums.directions)
+        directions = shift_directions_for_tcnn(ray_samples.frustums.directions)
         directions_flat = directions.view(-1, 3)
         d = self.direction_encoding(directions_flat)
 
@@ -394,8 +381,8 @@ class TorchNerfactoField(Field):
             positions = self.spatial_distortion(positions)
         else:
             positions = ray_samples.frustums.get_positions()
-        encoded_xyz = self.position_encoding(positions)
-        base_mlp_out = self.mlp_base(encoded_xyz)
+        encoded_xyz = self.position_encoding(positions.view(-1, 3)).to(torch.float32)
+        base_mlp_out = self.mlp_base(encoded_xyz).view(*ray_samples.frustums.shape, -1)
         density = self.field_output_density(base_mlp_out)
         return density, base_mlp_out
 
@@ -417,18 +404,20 @@ class TorchNerfactoField(Field):
 
         outputs = {}
         for field_head in self.field_heads:
-            encoded_dir = self.direction_encoding(ray_samples.frustums.directions)
+            directions = shift_directions_for_tcnn(ray_samples.frustums.directions)
+            directions_flat = directions.view(-1, 3)
+            encoded_dir = self.direction_encoding(directions_flat)
             mlp_out = self.mlp_head(
                 torch.cat(
                     [
-                        encoded_dir,
-                        density_embedding,  # type:ignore
+                        encoded_dir.view(-1, self.direction_encoding.get_out_dim()),
+                        density_embedding.view(-1, self.mlp_base.get_out_dim()),  # type:ignore
                         embedded_appearance.view(-1, self.appearance_embedding_dim),
                     ],
                     dim=-1,  # type:ignore
                 )
             )
-            outputs[field_head.field_head_name] = field_head(mlp_out)
+            outputs[field_head.field_head_name] = field_head(mlp_out).view(*outputs_shape, -1).to(directions)
         return outputs
 
 
