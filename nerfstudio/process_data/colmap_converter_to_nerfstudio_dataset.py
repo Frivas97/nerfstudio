@@ -17,6 +17,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Tuple
+import os
 
 from nerfstudio.process_data import colmap_utils, hloc_utils, process_data_utils
 from nerfstudio.process_data.base_converter_to_nerfstudio_dataset import (
@@ -96,6 +97,12 @@ class ColmapConverterToNerfstudioDataset(BaseConverterToNerfstudioDataset):
     """If True, export and use depth maps induced from SfM points."""
     include_depth_debug: bool = False
     """If --use-sfm-depth and this flag is True, also export debug images showing Sf overlaid upon input images."""
+    skip_colmap_feature_processing: bool = False
+    """If True, skip colmap feature extraction and feature matching. 
+    If you skip this process, make sure to have the file colmap/database.db to proceed with the COLMAP processing"""
+    skip_colmap_bundle_adjustment: bool = False
+    """If True, skip colmap mapper and bundle adjuster. 
+    If you skip this process, make sure to have the folder colmap/sparse/0 to generate the file transform.json"""
 
     @staticmethod
     def default_colmap_path() -> Path:  # pylint: disable=missing-function-docstring
@@ -190,6 +197,10 @@ class ColmapConverterToNerfstudioDataset(BaseConverterToNerfstudioDataset):
             assert sfm_tool == "hloc", "refine_pixsfm only works with sfm_tool hloc"
 
         if sfm_tool == "colmap":
+            if self.skip_colmap_feature_processing and not os.path.exists(os.path.join(self.absolute_colmap_path, 'database.db')):
+                raise FileNotFoundError("Database file 'database.db' not found. Can't skip feature processing.") 
+            if self.skip_colmap_bundle_adjustment and not os.path.exists(os.path.join(self.absolute_colmap_path, 'sparse/0')):
+                CONSOLE.log("[bold yellow]:warning: Skip COLMAP bundle adjustment. Folder colmap/sparse/0 and file transforms.json won't be created. :warning:")
             colmap_utils.run_colmap(
                 image_dir=self.image_dir,
                 colmap_dir=self.absolute_colmap_path,
@@ -199,6 +210,8 @@ class ColmapConverterToNerfstudioDataset(BaseConverterToNerfstudioDataset):
                 verbose=self.verbose,
                 matching_method=self.matching_method,
                 colmap_cmd=self.colmap_cmd,
+                skip_colmap_feature_processing=self.skip_colmap_feature_processing,
+                skip_colmap_bundle_adjustment=self.skip_colmap_bundle_adjustment
             )
         elif sfm_tool == "hloc":
             if mask_path is not None:

@@ -94,6 +94,8 @@ def run_colmap(
     verbose: bool = False,
     matching_method: Literal["vocab_tree", "exhaustive", "sequential"] = "vocab_tree",
     colmap_cmd: str = "colmap",
+    skip_colmap_feature_processing: bool = False,
+    skip_colmap_bundle_adjustment: bool = False
 ) -> None:
     """Runs COLMAP on the images.
 
@@ -110,71 +112,80 @@ def run_colmap(
 
     colmap_version = get_colmap_version(colmap_cmd)
 
-    colmap_database_path = colmap_dir / "database.db"
-    colmap_database_path.unlink(missing_ok=True)
+    if not skip_colmap_feature_processing:
 
-    # Feature extraction
-    feature_extractor_cmd = [
-        f"{colmap_cmd} feature_extractor",
-        f"--database_path {colmap_dir / 'database.db'}",
-        f"--image_path {image_dir}",
-        "--ImageReader.single_camera 1",
-        f"--ImageReader.camera_model {camera_model.value}",
-        f"--SiftExtraction.use_gpu {int(gpu)}",
-    ]
-    if camera_mask_path is not None:
-        feature_extractor_cmd.append(f"--ImageReader.camera_mask_path {camera_mask_path}")
-    feature_extractor_cmd = " ".join(feature_extractor_cmd)
-    with status(msg="[bold yellow]Running COLMAP feature extractor...", spinner="moon", verbose=verbose):
-        run_command(feature_extractor_cmd, verbose=verbose)
+        colmap_database_path = colmap_dir / "database.db"
+        colmap_database_path.unlink(missing_ok=True)
 
-    CONSOLE.log("[bold green]:tada: Done extracting COLMAP features.")
 
-    # Feature matching
-    feature_matcher_cmd = [
-        f"{colmap_cmd} {matching_method}_matcher",
-        f"--database_path {colmap_dir / 'database.db'}",
-        f"--SiftMatching.use_gpu {int(gpu)}",
-    ]
-    if matching_method == "vocab_tree":
-        vocab_tree_filename = get_vocab_tree()
-        feature_matcher_cmd.append(f"--VocabTreeMatching.vocab_tree_path {vocab_tree_filename}")
-    feature_matcher_cmd = " ".join(feature_matcher_cmd)
-    with status(msg="[bold yellow]Running COLMAP feature matcher...", spinner="runner", verbose=verbose):
-        run_command(feature_matcher_cmd, verbose=verbose)
-    CONSOLE.log("[bold green]:tada: Done matching COLMAP features.")
-
-    # Bundle adjustment
-    sparse_dir = colmap_dir / "sparse"
-    sparse_dir.mkdir(parents=True, exist_ok=True)
-    mapper_cmd = [
-        f"{colmap_cmd} mapper",
-        f"--database_path {colmap_dir / 'database.db'}",
-        f"--image_path {image_dir}",
-        f"--output_path {sparse_dir}",
-    ]
-    if colmap_version >= 3.7:
-        mapper_cmd.append("--Mapper.ba_global_function_tolerance 1e-6")
-
-    mapper_cmd = " ".join(mapper_cmd)
-
-    with status(
-        msg="[bold yellow]Running COLMAP bundle adjustment... (This may take a while)",
-        spinner="circle",
-        verbose=verbose,
-    ):
-        run_command(mapper_cmd, verbose=verbose)
-    CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
-    with status(msg="[bold yellow]Refine intrinsics...", spinner="dqpb", verbose=verbose):
-        bundle_adjuster_cmd = [
-            f"{colmap_cmd} bundle_adjuster",
-            f"--input_path {sparse_dir}/0",
-            f"--output_path {sparse_dir}/0",
-            "--BundleAdjustment.refine_principal_point 1",
+        # Feature extraction
+        feature_extractor_cmd = [
+            f"{colmap_cmd} feature_extractor",
+            f"--database_path {colmap_dir / 'database.db'}",
+            f"--image_path {image_dir}",
+            "--ImageReader.single_camera 1",
+            f"--ImageReader.camera_model {camera_model.value}",
+            f"--SiftExtraction.use_gpu {int(gpu)}",
         ]
-        run_command(" ".join(bundle_adjuster_cmd), verbose=verbose)
-    CONSOLE.log("[bold green]:tada: Done refining intrinsics.")
+        if camera_mask_path is not None:
+            feature_extractor_cmd.append(f"--ImageReader.camera_mask_path {camera_mask_path}")
+        feature_extractor_cmd = " ".join(feature_extractor_cmd)
+        with status(msg="[bold yellow]Running COLMAP feature extractor...", spinner="moon", verbose=verbose):
+            run_command(feature_extractor_cmd, verbose=verbose)
 
+        CONSOLE.log("[bold green]:tada: Done extracting COLMAP features.")
+
+        # Feature matching
+        feature_matcher_cmd = [
+            f"{colmap_cmd} {matching_method}_matcher",
+            f"--database_path {colmap_dir / 'database.db'}",
+            f"--SiftMatching.use_gpu {int(gpu)}",
+        ]
+        if matching_method == "vocab_tree":
+            vocab_tree_filename = get_vocab_tree()
+            feature_matcher_cmd.append(f"--VocabTreeMatching.vocab_tree_path {vocab_tree_filename}")
+        feature_matcher_cmd = " ".join(feature_matcher_cmd)
+        with status(msg="[bold yellow]Running COLMAP feature matcher...", spinner="runner", verbose=verbose):
+            run_command(feature_matcher_cmd, verbose=verbose)
+        CONSOLE.log("[bold green]:tada: Done matching COLMAP features.")
+
+    else:
+        CONSOLE.log("[bold yellow]:tada: Skip COLMAP feature extraction and matching.")
+
+    if not skip_colmap_bundle_adjustment:
+        # Bundle adjustment
+        sparse_dir = colmap_dir / "sparse"
+        sparse_dir.mkdir(parents=True, exist_ok=True)
+        mapper_cmd = [
+            f"{colmap_cmd} mapper",
+            f"--database_path {colmap_dir / 'database.db'}",
+            f"--image_path {image_dir}",
+            f"--output_path {sparse_dir}",
+        ]
+        if colmap_version >= 3.7:
+            mapper_cmd.append("--Mapper.ba_global_function_tolerance 1e-6")
+
+        mapper_cmd = " ".join(mapper_cmd)
+
+        with status(
+            msg="[bold yellow]Running COLMAP bundle adjustment... (This may take a while)",
+            spinner="circle",
+            verbose=verbose,
+        ):
+            run_command(mapper_cmd, verbose=verbose)
+        CONSOLE.log("[bold green]:tada: Done COLMAP bundle adjustment.")
+        with status(msg="[bold yellow]Refine intrinsics...", spinner="dqpb", verbose=verbose):
+            bundle_adjuster_cmd = [
+                f"{colmap_cmd} bundle_adjuster",
+                f"--input_path {sparse_dir}/0",
+                f"--output_path {sparse_dir}/0",
+                "--BundleAdjustment.refine_principal_point 1",
+            ]
+            run_command(" ".join(bundle_adjuster_cmd), verbose=verbose)
+        CONSOLE.log("[bold green]:tada: Done refining intrinsics.")
+
+    else:
+        CONSOLE.log("[bold yellow]:tada: Skip COLMAP feature mapper and bundle adjuster.")
 
 def parse_colmap_camera_params(camera) -> Dict[str, Any]:  # pylint: disable=too-many-statements
     """

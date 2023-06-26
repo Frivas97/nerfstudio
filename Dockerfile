@@ -1,165 +1,144 @@
-# Define base image.
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+FROM nvidia/cuda:11.3.0-devel
+SHELL [ "/bin/bash", "--login", "-c" ]
 
-# metainformation
-LABEL org.opencontainers.image.version = "0.1.18"
-LABEL org.opencontainers.image.source = "https://github.com/nerfstudio-project/nerfstudio"
-LABEL org.opencontainers.image.licenses = "Apache License 2.0"
-LABEL org.opencontainers.image.base.name="docker.io/library/nvidia/cuda:11.8.0-devel-ubuntu22.04"
+# set timezone
+ENV TZ=Europe/Lisbon
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Variables used at build time.
-## CUDA architectures, required by Colmap and tiny-cuda-nn.
-## NOTE: All commonly used GPU architectures are included and supported here. To speedup the image build process remove all architectures but the one of your explicit GPU. Find details here: https://developer.nvidia.com/cuda-gpus (8.6 translates to 86 in the line below) or in the docs.
-ARG CUDA_ARCHITECTURES=90;89;86;80;75;70;61;52;37
+# Prevent stop building ubuntu at time zone selection.  
+#ENV DEBIAN_FRONTEND=noninteractive
 
-# Set environment variables.
-## Set non-interactive to prevent asking for user inputs blocking image creation.
-ENV DEBIAN_FRONTEND=noninteractive
-## Set timezone as it is required by some packages.
-ENV TZ=Europe/Berlin
-## CUDA Home, required to find CUDA in some packages.
-ENV CUDA_HOME="/usr/local/cuda"
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
 
-# Install required apt packages and clear cache afterwards.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    curl \
-    ffmpeg \
+RUN apt -y update &&\
+    apt install -y net-tools &&\
+    apt -y install git wget &&\
+    apt -y update &&\ 
+    apt clean &&\
+    apt autoremove 
+
+# Prepare and empty machine for building
+RUN apt-get update && apt-get install -y \
     git \
-    libatlas-base-dev \
+    cmake \
+    build-essential \
+    libboost-program-options-dev \
     libboost-filesystem-dev \
     libboost-graph-dev \
-    libboost-program-options-dev \
     libboost-system-dev \
     libboost-test-dev \
-    libhdf5-dev \
-    libcgal-dev \
     libeigen3-dev \
-    libflann-dev \
+    libsuitesparse-dev \
     libfreeimage-dev \
+    libmetis-dev \
+    libgoogle-glog-dev \
     libgflags-dev \
     libglew-dev \
-    libgoogle-glog-dev \
-    libmetis-dev \
-    libprotobuf-dev \
-    libqt5opengl5-dev \
-    libsqlite3-dev \
-    libsuitesparse-dev \
-    nano \
-    protobuf-compiler \
-    python-is-python3 \
-    python3.10-dev \
-    python3-pip \
     qtbase5-dev \
-    sudo \
-    vim-tiny \
-    wget && \
-    rm -rf /var/lib/apt/lists/*
+    libqt5opengl5-dev \
+    libcgal-dev \
+    wget \
+    libopenexr-dev \
+    bzip2 \
+    zlib1g-dev \
+    libxmu-dev \
+    libxi-dev \
+    libxxf86vm-dev \
+    libfontconfig1 \
+    libxrender1 \
+    libgl1-mesa-glx \
+    xz-utils \
+    python3-pip
 
+RUN apt remove -y cmake
+RUN pip install cmake --upgrade \
+    numpy
 
-# Install GLOG (required by ceres).
-RUN git clone --branch v0.6.0 https://github.com/google/glog.git --single-branch && \
-    cd glog && \
+# Build and install ceres solver
+RUN apt-get -y install \
+    libatlas-base-dev \
+    libsuitesparse-dev \
+    libsqlite3-dev
+
+ARG CERES_SOLVER_VERSION=2.1.0
+
+RUN git clone https://github.com/ceres-solver/ceres-solver.git --tag ${CERES_SOLVER_VERSION}
+#SHELL [ "/bin/bash", "--login", "-c" ]
+RUN cd ${CERES_SOLVER_VERSION} &&\
+    mkdir build &&\
+    cd build &&\
+    cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF &&\
+    make -j4 &&\
+    make install
+
+#Colmap
+ENV COMMIT=3.8
+RUN git clone https://github.com/lz4/lz4.git && \
+    cd lz4 && \
+    make && \
+    make install
+
+RUN git clone https://github.com/flann-lib/flann.git && \
+    cd flann && \
     mkdir build && \
     cd build && \
     cmake .. && \
-    make -j `nproc` && \
-    make install && \
-    cd ../.. && \
-    rm -rf glog
-# Add glog path to LD_LIBRARY_PATH.
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib"
+    make install
 
-# Install Ceres-solver (required by colmap).
-RUN git clone --branch 2.1.0 https://ceres-solver.googlesource.com/ceres-solver.git --single-branch && \
-    cd ceres-solver && \
-    git checkout $(git describe --tags) && \
+RUN apt-get update && apt-get install -y\
+    git \
+    cmake \
+    ninja-build \
+    build-essential \
+    libboost-program-options-dev \
+    libboost-filesystem-dev \
+    libboost-graph-dev \
+    libboost-system-dev \
+    libboost-test-dev \
+    libeigen3-dev \
+    libflann-dev \
+    libfreeimage-dev \
+    libmetis-dev \
+    libgoogle-glog-dev \
+    libgflags-dev \
+    libsqlite3-dev \
+    libglew-dev \
+    qtbase5-dev \
+    libqt5opengl5-dev \
+    libcgal-dev \
+    libceres-dev
+
+RUN git clone https://github.com/colmap/colmap.git 
+
+RUN cd colmap && \
+    git checkout $COMMIT && \
     mkdir build && \
     cd build && \
-    cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF && \
-    make -j `nproc` && \
-    make install && \
-    cd ../.. && \
-    rm -rf ceres-solver
+    cmake -D CMAKE_CUDA_ARCHITECTURES=80 .. && \
+    make -j4 && \
+    make install
 
-# Install colmap.
-RUN git clone --branch 3.8 https://github.com/colmap/colmap.git --single-branch && \
-    cd colmap && \
-    mkdir build && \
-    cd build && \
-    cmake .. -DCUDA_ENABLED=ON \
-             -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES} && \
-    make -j `nproc` && \
-    make install && \
-    cd ../.. && \
-    rm -rf colmap
 
-# Create non root user and setup environment.
-RUN useradd -m -d /home/user -g root -G sudo -u 1000 user
-RUN usermod -aG sudo user
-# Set user password
-RUN echo "user:user" | chpasswd
-# Ensure sudo group users are not asked for a password when using sudo command by ammending sudoers file
-RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+# Pick up some TF dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ffmpeg \
+        pkg-config \
+        python \
+        rsync \
+        software-properties-common \
+        unzip \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Switch to new uer and workdir.
-USER 1000
-WORKDIR /home/user
+ENV TCNN_CUDA_ARCHITECTURES=86
+RUN pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 -f https://download.pytorch.org/whl/torch_stable.html && \
+    pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
 
-# Add local user binary folder to PATH variable.
-ENV PATH="${PATH}:/home/user/.local/bin"
-SHELL ["/bin/bash", "-c"]
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python3 get-pip.py
 
-# Upgrade pip and install packages.
-RUN python3.10 -m pip install --upgrade pip setuptools pathtools promise pybind11
-# Install pytorch and submodules (Currently, we still use cu116 which is the latest version for torch 1.12.1 and is compatible with CUDA 11.8).
-RUN python3.10 -m pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 --extra-index-url https://download.pytorch.org/whl/cu116
-# Install tynyCUDNN (we need to set the target architectures as environment variable first).
-ENV TCNN_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}
-RUN python3.10 -m pip install git+https://github.com/NVlabs/tiny-cuda-nn.git@v1.6#subdirectory=bindings/torch
-
-# Install pycolmap 0.3.0, required by hloc.
-# TODO(https://github.com/colmap/pycolmap/issues/111) use wheel when available for Python 3.10
-RUN git clone --branch v0.3.0 --recursive https://github.com/colmap/pycolmap.git && \
-    cd pycolmap && \
-    python3.10 -m pip install . && \
-    cd ..
-
-# Install hloc master (last release (1.3) is too old) as alternative feature detector and matcher option for nerfstudio.
-RUN git clone --branch master --recursive https://github.com/cvg/Hierarchical-Localization && \
-    cd Hierarchical-Localization && \
-    python3.10 -m pip install -e . && \
-    cd ..
-
-# Install pyceres from source
-RUN git clone --branch main --recursive https://github.com/cvg/pyceres.git && \
-    cd pyceres && \
-    python3.10 -m pip install -e . && \
-    cd ..
-
-# Install pixel perfect sfm.
-RUN git clone --branch main --recursive https://github.com/cvg/pixel-perfect-sfm && \
-    cd pixel-perfect-sfm && \
-    python3.10 -m pip install -e . && \
-    cd ..
-
-RUN python3.10 -m pip install omegaconf
-# Copy nerfstudio folder and give ownership to user.
-ADD . /home/user/nerfstudio
-USER root
-RUN chown -R user /home/user/nerfstudio
-USER 1000
-
-# Install nerfstudio dependencies.
-RUN cd nerfstudio && \
-    python3.10 -m pip install -e . && \
-    cd ..
-
-# Change working directory
-WORKDIR /workspace
-
-# Install nerfstudio cli auto completion and enter shell if no command was provided.
-CMD ns-install-cli --mode install && /bin/bash
-
+COPY . ./nerfstudio
+RUN pip3 install functorch==0.2.1 && \
+    pip3 install -e ./nerfstudio
